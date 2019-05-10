@@ -328,6 +328,7 @@ func GetAuthorization(authzUUID string) (
 
 	// Return error if authorization doesn't exist
 	authz, err := db.GetAuthorization(authzUUID)
+	log.Debugf("ffffffffff: %#v", authz)
 	if err != nil {
 		log.Warn("failed to get authorization; err:", err)
 		return types.Authorization{}, err

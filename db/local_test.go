@@ -54,9 +54,11 @@ func (s *dbSuite) SetUpTest(c *C) {
 
 // SetUpSuite sets up the environment for tests.
 func (s *dbSuite) SetUpSuite(c *C) {
-	datastoreAddress := strings.TrimSpace(os.Getenv("DATASTORE_ADDRESS"))
-	datastoreDriver = strings.TrimSpace(os.Getenv("DATASTORE_DRIVER"))
-
+	//datastoreAddress := strings.TrimSpace(os.Getenv("DATASTORE_ADDRESS"))
+	//datastoreDriver = strings.TrimSpace(os.Getenv("DATASTORE_DRIVER"))
+        datastoreAddress := "http://10.43.1.61:2379"
+        datastoreDriver := "etcd"
+         
 	if datastoreDriver != state.EtcdName && datastoreDriver != state.ConsulName {
 		log.Fatalln("you must provide a DATASTORE_DRIVER (options: [etcd, consul])")
 	}

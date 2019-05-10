@@ -6,6 +6,8 @@ import (
 	"os"
 	"runtime"
 	"syscall"
+        "strings"
+        "net/url"
 
 	"github.com/blang/semver"
 	"github.com/contiv/auth_proxy/auth"
@@ -218,8 +220,22 @@ func main() {
 		log.SetLevel(log.DebugLevel)
 	}
 
+
+	storeURL := []string{}
+	for _, endpoint := range common.FilterEmpty(strings.Split(dataStoreAddress, ",")) {
+		_, err := url.Parse(endpoint)
+		if err != nil {
+			log.Println("invalid %s endpoint: %v", dataStoreAddress, endpoint)
+			return
+		}
+		storeURL = append(storeURL,endpoint)
+		log.Println("Using state db endpoints: %v", storeURL)
+
+	}
+
+
 	// Initialize data store
-	if err := state.InitializeStateDriver(dataStoreDriver, dataStoreAddress); err != nil {
+	if err := state.InitializeStateDriver(dataStoreDriver, storeURL); err != nil {
 		log.Fatalln(err)
 		return
 	}

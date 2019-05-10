@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"net/url"
 	"reflect"
-	"strings"
+	//"strings"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/coreos/etcd/client"
+	//"github.com/coreos/etcd/client"
+	client "go.etcd.io/etcd/clientv3"
 	"golang.org/x/net/context"
 
 	auth_errors "github.com/contiv/auth_proxy/common/errors"
@@ -31,11 +32,11 @@ const (
 type EtcdStateDriver struct {
 
 	// Client to access etcd
-	Client client.Client
+	Client *client.Client
 
 	// KeysAPI is used to interact with etcd's key-value
 	// API over HTTP
-	KeysAPI client.KeysAPI
+	// KeysAPI client.KeysAPI
 }
 
 //
@@ -51,22 +52,28 @@ func (d *EtcdStateDriver) Init(config *types.KVStoreConfig) error {
 	var err error
 	var endpoint *url.URL
 
-	if config == nil {
+	if config == nil || len(config.StoreURL) == 0 {
 		return errors.New("Invalid etcd config")
 	}
 
-	endpoint, err = url.Parse(config.StoreURL)
-	if err != nil {
-		return err
-	}
-	if endpoint.Scheme == "etcd" {
-		endpoint.Scheme = "http"
-	} else if endpoint.Scheme != "http" && endpoint.Scheme != "https" {
-		return fmt.Errorf("invalid etcd URL scheme %q", endpoint.Scheme)
+	for  _,dburl :=  range config.StoreURL {
+
+		endpoint, err = url.Parse(dburl)
+		if err != nil {
+			return err
+		}
+
+		if endpoint.Scheme == "etcd" {
+			endpoint.Scheme = "http"
+		} else if endpoint.Scheme != "http" && endpoint.Scheme != "https" {
+			return fmt.Errorf("invalid etcd URL scheme %q", endpoint.Scheme)
+		}
 	}
 
+
 	etcdConfig := client.Config{
-		Endpoints: []string{endpoint.String()},
+		// Endpoints: []string{endpoint.String()},
+		Endpoints: config.StoreURL,
 	}
 
 	// create etcd client
@@ -76,7 +83,7 @@ func (d *EtcdStateDriver) Init(config *types.KVStoreConfig) error {
 	}
 
 	// create keys api
-	d.KeysAPI = client.NewKeysAPI(d.Client)
+	// d.KeysAPI = client.NewKeysAPI(d.Client)
 
 	for _, dir := range types.DatastoreDirectories {
 		// etcd paths begin with a slash
@@ -99,34 +106,36 @@ func (d *EtcdStateDriver) Deinit() {}
 //   nil:   successfully created directory
 //
 func (d *EtcdStateDriver) Mkdir(key string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
-	defer cancel()
+	// ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+	// defer cancel()
 
-	// sanity test
-	if !strings.HasPrefix(key, "/") {
-		return fmt.Errorf(
-			"etcd keys must begin with a slash (got '%s')",
-			key,
-		)
-	}
+	// // sanity test
+	// if !strings.HasPrefix(key, "/") {
+	// 	return fmt.Errorf(
+	// 		"etcd keys must begin with a slash (got '%s')",
+	// 		key,
+	// 	)
+	// }
 
-	for i := 0; ; i++ {
-		_, err := d.KeysAPI.Set(ctx, key, "", &client.SetOptions{Dir: true})
-		if err == nil {
-			return nil
-		}
+	// for i := 0; ; i++ {
+	// 	_, err := d.KeysAPI.Set(ctx, key, "", &client.SetOptions{Dir: true})
+	// 	if err == nil {
+	// 		return nil
+	// 	}
 
-		// Retry few times if cluster is unavailable
-		if err.Error() == client.ErrClusterUnavailable.Error() {
-			if i < maxEtcdRetries {
-				// Retry after a delay
-				time.Sleep(time.Second)
-				continue
-			}
-		}
+	// 	// Retry few times if cluster is unavailable
+	// 	if err.Error() == client.ErrClusterUnavailable.Error() {
+	// 		if i < maxEtcdRetries {
+	// 			// Retry after a delay
+	// 			time.Sleep(time.Second)
+	// 			continue
+	// 		}
+	// 	}
 
-		return err
-	}
+	// 	return err
+	// }
+	// etcd 3 does not have directories
+	return nil
 }
 
 //
@@ -145,12 +154,12 @@ func (d *EtcdStateDriver) Write(key string, value []byte) error {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
-	_, err := d.KeysAPI.Set(ctx, key, string(value[:]), nil)
+	_, err := d.Client.KV.Put(ctx, key, string(value[:]))
 	if err != nil {
 		// Retry few times if cluster is unavailable
-		if err.Error() == client.ErrClusterUnavailable.Error() {
+		if err == client.ErrNoAvailableEndpoints {
 			for i := 0; i < maxEtcdRetries; i++ {
-				_, err = d.KeysAPI.Set(ctx, key, string(value[:]), nil)
+				_, err = d.Client.KV.Put(ctx, key, string(value[:]))
 				if err == nil {
 					break
 				}
@@ -180,22 +189,24 @@ func (d *EtcdStateDriver) Read(key string) ([]byte, error) {
 	defer cancel()
 
 	var err error
-	var resp *client.Response
+	var resp *client.GetResponse
 
 	// i <= maxEtcdRetries to ensure that the initial `GET` call is also incorporated along with retries
 	for i := 0; i <= maxEtcdRetries; i++ {
-		resp, err = d.KeysAPI.Get(ctx, key, &client.GetOptions{Quorum: true})
-
-		if err == nil {
-			// on successful read
-			return []byte(resp.Node.Value), nil
-		} else if client.IsKeyNotFound(err) {
-			return nil, auth_errors.ErrKeyNotFound
-		} else if err.Error() == client.ErrClusterUnavailable.Error() {
-			// retry after a delay
-			time.Sleep(time.Second)
+		resp, err = d.Client.KV.Get(ctx, key)
+		if err != nil {
+			if err == client.ErrNoAvailableEndpoints {
+				// retry after a delay
+				time.Sleep(time.Second)
+			}
 			continue
 		}
+		if resp.Count == 0 {
+			return nil, auth_errors.ErrKeyNotFound
+		}
+
+		// on successful read
+		return resp.Kvs[0].Value, nil
 
 	}
 
@@ -218,30 +229,32 @@ func (d *EtcdStateDriver) ReadAll(baseKey string) ([][]byte, error) {
 	defer cancel()
 
 	var err error
-	var resp *client.Response
+	var resp *client.GetResponse
 
 	// i <= maxEtcdRetries to ensure that the initial `GET` call is also incorporated along with retries
 	for i := 0; i <= maxEtcdRetries; i++ {
-		resp, err = d.KeysAPI.Get(ctx, baseKey, &client.GetOptions{Recursive: true, Quorum: true})
+		resp, err = d.Client.KV.Get(ctx, baseKey, client.WithPrefix())
+                log.Debugf("GetResponse1111:%+v",resp)
+		if err != nil {
+			if err == client.ErrNoAvailableEndpoints {
+				// retry after a delay
+				time.Sleep(time.Second)
 
-		if err == nil {
-			// on successful read
-			values := [][]byte{}
-			for _, node := range resp.Node.Nodes {
-				values = append(values, []byte(node.Value))
 			}
-
-			return values, nil
-		} else if client.IsKeyNotFound(err) {
-			return nil, auth_errors.ErrKeyNotFound
-		} else if err.Error() == client.ErrClusterUnavailable.Error() {
-			// retry after a delay
-			time.Sleep(time.Second)
 			continue
 		}
+		if resp.Count == 0 {
+			return nil, auth_errors.ErrKeyNotFound
+		}
 
+		// on successful read
+		values := [][]byte{}
+		for _, node := range resp.Kvs {
+			values = append(values, node.Value)
+		}
+	        return values, nil	
+                log.Debugf("aaaaffffvalues:%+v", values)
 	}
-
 	return [][]byte{}, err
 }
 
@@ -254,42 +267,33 @@ func (d *EtcdStateDriver) ReadAll(baseKey string) ([][]byte, error) {
 //   chValueChanges: Channel of type [2][]byte used to communicate the value changes
 //                   for a key in the KV store
 //
-func (d *EtcdStateDriver) channelEtcdEvents(watcher client.Watcher, chValueChanges chan [2][]byte) {
-	for {
-		// block on change notifications
-		etcdRsp, err := watcher.Next(context.Background())
-		if err != nil {
-			log.Errorf("Error %v during watch", err)
-			time.Sleep(time.Second)
-			continue
-		}
+// func (d *EtcdStateDriver) channelEtcdEvents(watcher client.Watcher, chValueChanges chan [2][]byte) {
+func (d *EtcdStateDriver) channelEtcdEvents(watcher client.WatchChan, rsps chan [2][]byte) {
+        for resp := range watcher {
 
-		// The logic below assumes that the node returned is always a node
-		// of interest. Eg: If we set a watch on /a/b/c, then we are mostly
-		// interested in changes in that directory i.e. changes to /a/b/c/d1..d2
-		byteValues := [2][]byte{nil, nil}
-		eventStr := "create"
+                for _, ev := range resp.Events {
+                        //                      fmt.Printf("%s %q : %q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
 
-		// store current node value
-		if etcdRsp.Node.Value != "" {
-			byteValues[0] = []byte(etcdRsp.Node.Value)
-		}
+                        rsp := [2][]byte{nil, nil}
+                        eventStr := "create"
+                        if string(ev.Kv.Value) != "" {
+                                rsp[0] = ev.Kv.Value
+                        }
 
-		// store previous node value
-		if etcdRsp.PrevNode != nil && etcdRsp.PrevNode.Value != "" {
-			byteValues[1] = []byte(etcdRsp.PrevNode.Value)
-			if etcdRsp.Node.Value != "" {
-				eventStr = "modify"
-			} else {
-				eventStr = "delete"
-			}
-		}
+                        if ev.PrevKv != nil && string(ev.PrevKv.Value) != "" {
+                                rsp[1] = ev.PrevKv.Value
+                                if string(ev.Kv.Value) != "" {
+                                        eventStr = "modify"
+                                } else {
+                                        eventStr = "delete"
+                                }
+                        }
 
-		log.Debugf("Observed event:%q for key: %s", eventStr, etcdRsp.Node.Key)
-
-		// send changes in values for the key to a channel
-		chValueChanges <- byteValues
-	}
+                        log.Debugf("Received %q for key: %s", eventStr, ev.Kv.Key)
+                        //channel the translated response
+                        rsps <- rsp
+                }
+        }
 }
 
 //
@@ -305,15 +309,16 @@ func (d *EtcdStateDriver) channelEtcdEvents(watcher client.Watcher, chValueChang
 //          for a key
 //          nil if successful
 //
-func (d *EtcdStateDriver) WatchAll(baseKey string, chValueChanges chan [2][]byte) error {
+// func (d *EtcdStateDriver) WatchAll(baseKey string, chValueChanges chan [2][]byte) error {
+func (d *EtcdStateDriver) WatchAll(baseKey string, rsps chan [2][]byte) error {
 
-	watcher := d.KeysAPI.Watcher(baseKey, &client.WatcherOptions{Recursive: true})
-	if watcher == nil {
-		log.Errorf("etcd watch failed")
-		return errors.New("etcd watch failed")
-	}
-
-	go d.channelEtcdEvents(watcher, chValueChanges)
+	// watcher := d.KeysAPI.Watcher(baseKey, &client.WatcherOptions{Recursive: true})
+	// if watcher == nil {
+	// 	log.Errorf("etcd watch failed")
+	// 	return errors.New("etcd watch failed")
+	// }
+	watcher := d.Client.Watch(context.Background(), baseKey, client.WithPrefix())
+	go d.channelEtcdEvents(watcher, rsps)
 
 	return nil
 }
@@ -331,10 +336,11 @@ func (d *EtcdStateDriver) Clear(key string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
-	_, err := d.KeysAPI.Delete(ctx, key, nil)
+	var resp *client.DeleteResponse
 
-	if client.IsKeyNotFound(err) {
-		return nil
+	resp, err := d.Client.KV.Delete(ctx, key)
+	if resp.Deleted == 0 {
+		return auth_errors.ErrKeyNotFound
 	}
 
 	return err
@@ -401,7 +407,13 @@ func readAllStateCommon(d types.StateDriver, baseKey string, sType types.State,
 	sliceType := reflect.SliceOf(stateType)
 	values := reflect.MakeSlice(sliceType, 0, 1)
 
+        log.Debugf("1222stateType:%+v", stateType)
+        log.Debugf("1222sliceType:%+v", sliceType)
+        log.Debugf("1222values:%+v", values)
+        log.Debugf("1222baseKey:%+v", baseKey)
 	byteValues, err := d.ReadAll(baseKey)
+         
+        log.Debugf("1222byteValues:%+v", byteValues)
 	if err != nil {
 		return nil, err
 	}
@@ -557,6 +569,7 @@ func (d *EtcdStateDriver) WatchAllState(baseKey string, sType types.State,
 //
 func (d *EtcdStateDriver) WriteState(key string, value types.State,
 	marshal func(interface{}) ([]byte, error)) error {
+	log.Debugf("aaaaafffssss")
 	encodedState, err := marshal(value)
 	if err != nil {
 		return err

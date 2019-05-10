@@ -150,6 +150,7 @@ func (s *Server) ProxyRequest(w http.ResponseWriter, req *http.Request) (*http.R
 	log.Debugf("Proxying request upstream to %s%s", copy.URL.Host, copy.URL.Path)
 
 	resp, err := s.netmasterClient.Do(copy)
+        log.Debugf("aaaaaaaaaaaa:%+v", resp)
 	if err != nil {
 		return nil, []byte{}, errors.New("Failed to perform duplicate request: " + err.Error())
 	}

@@ -353,13 +353,13 @@ func (authZ *Token) IsSuperuser() bool {
 
 	// Deserialize principals as a slice
 	principals := strings.Split(authZ.GetClaim(principalsClaimKey), ";")
-
+        log.Debugf("11111:%+v",principals)
 	for _, p := range principals {
 		// Get role claim for the principal
 		authz, err := db.ListAuthorizationsByClaimAndPrincipal(types.RoleClaimKey, p)
 		// If not found, ignore error and move on to next principal
 		if err != nil || len(authz) == 0 {
-			log.Debug("no admin claim found for principal ", p)
+			log.Debug("1no admin claim found for principal ", p)
 			continue
 		}
 
@@ -378,7 +378,7 @@ func (authZ *Token) IsSuperuser() bool {
 	}
 
 	// No principal has admin role claim
-	log.Debug("no principals with admin claim present")
+	log.Debug("2no principals with admin claim present")
 	return false
 }
 

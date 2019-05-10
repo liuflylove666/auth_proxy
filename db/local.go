@@ -20,12 +20,14 @@ import (
 //  error: as returned by consecutive func calls
 func GetLocalUsers() ([]*types.LocalUser, error) {
 	stateDrv, err := state.GetStateDriver()
+        log.Infof("aaaastateDrv:%+v",stateDrv)
 	if err != nil {
 		return nil, err
 	}
 
 	users := []*types.LocalUser{}
 	rawData, err := stateDrv.ReadAll(GetPath(RootLocalUsers))
+        log.Infof("ffffffrawData:+%v", rawData)
 	if err != nil {
 		if err == auth_errors.ErrKeyNotFound {
 			return users, nil

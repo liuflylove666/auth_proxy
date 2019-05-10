@@ -326,6 +326,7 @@ func ListAuthorizationsByClaimAndPrincipal(claim string, principal string) (
 		return nil, auth_errors.ErrReadingFromStore
 	}
 
+        log.Debugf("ffffff:%+v", allAuthZList)	
 	for _, auth := range allAuthZList {
 		tmp, ok := auth.(*types.Authorization)
 		if ok {
