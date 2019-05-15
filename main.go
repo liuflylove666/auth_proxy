@@ -27,6 +27,9 @@ var (
 	// flags
 	dataStoreDriver  string // driver of the data store used by netmaster
 	dataStoreAddress string // address of the data store used by netmaster
+	dataStoreCert 	 string
+	dataStoreKey 	 string
+	dataStoreCA 	 string
 	debug            bool   // if set, log level is set to `debug`
 	listenAddress    string // address we listen on
 	netmasterAddress string // address of the netmaster we proxy to
@@ -113,6 +116,25 @@ func processFlags() {
 	flag.StringVar(
 		&dataStoreDriver,
 		"data-store-driver",
+		"",
+		"driver of the state store used by netmaster",
+	)
+
+	flag.StringVar(
+		&dataStoreCert,
+		"data-store-cert",
+		"",
+		"driver of the state store used by netmaster",
+	)
+	flag.StringVar(
+		&dataStoreCA,
+		"data-store-ca",
+		"",
+		"driver of the state store used by netmaster",
+	)
+	flag.StringVar(
+		&dataStoreKey,
+		"data-store-key",
 		"",
 		"driver of the state store used by netmaster",
 	)
@@ -229,13 +251,13 @@ func main() {
 			return
 		}
 		storeURL = append(storeURL,endpoint)
-		log.Println("Using state db endpoints: %v", storeURL)
+		log.Println("Using state db endpoints:", storeURL)
 
 	}
 
 
 	// Initialize data store
-	if err := state.InitializeStateDriver(dataStoreDriver, storeURL); err != nil {
+	if err := state.InitializeStateDriver(dataStoreDriver, storeURL, dataStoreCert, dataStoreKey, dataStoreCA); err != nil {
 		log.Fatalln(err)
 		return
 	}

@@ -3,13 +3,13 @@ package state
 import (
 	"errors"
 	"fmt"
+	"go.etcd.io/etcd/pkg/transport"
 	"net/url"
 	"reflect"
 	//"strings"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
-	//"github.com/coreos/etcd/client"
 	client "go.etcd.io/etcd/clientv3"
 	"golang.org/x/net/context"
 
@@ -34,17 +34,9 @@ type EtcdStateDriver struct {
 	// Client to access etcd
 	Client *client.Client
 
-	// KeysAPI is used to interact with etcd's key-value
-	// API over HTTP
-	// KeysAPI client.KeysAPI
 }
 
-//
-// Init initializes the state driver with needed config
-//
-// Parameters:
-//   config: configuration parameters to create etcd client
-//
+
 // Return values:
 //   error:  error when creating an etcd client
 //
@@ -54,6 +46,21 @@ func (d *EtcdStateDriver) Init(config *types.KVStoreConfig) error {
 
 	if config == nil || len(config.StoreURL) == 0 {
 		return errors.New("Invalid etcd config")
+	}
+
+	tlsInfo := transport.TLSInfo{
+		CertFile:               config.DbTLSCert,
+		KeyFile:                config.DbTLSKey,
+		TrustedCAFile:   		config.DbTLSCa,
+	}
+	tlsConfig, err := tlsInfo.ClientConfig()
+
+	if err != nil {
+		log.Fatalf("error tlsInfo  Format. Err: %v", err)
+	}
+
+	if len(config.DbTLSCert) ==0 && len(config.DbTLSKey) ==0 &&  len(config.DbTLSCa) ==0  {
+		tlsConfig = nil
 	}
 
 	for  _,dburl :=  range config.StoreURL {
@@ -72,8 +79,8 @@ func (d *EtcdStateDriver) Init(config *types.KVStoreConfig) error {
 
 
 	etcdConfig := client.Config{
-		// Endpoints: []string{endpoint.String()},
 		Endpoints: config.StoreURL,
+		TLS: tlsConfig,
 	}
 
 	// create etcd client

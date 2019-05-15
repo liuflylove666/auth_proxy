@@ -75,25 +75,6 @@ type LocalUser struct {
 	PasswordHash []byte `json:"password_hash,omitempty"`
 }
 
-// LdapConfiguration represents the LDAP/AD configuration.
-// All the connection to LDAP/AD is established using this details.
-//
-// Fields:
-//  Server: FQDN or IP address of LDAP/AD server
-//  Port: listening port of LDAP/AD server
-//  BaseDN: Distinguished name for base entity.
-//          E.g., ou=eng,dc=auth,dc=com. All search queries will be scope to this BaseDN.
-//  ServiceAccountDN: DN of the service account. auth_proxy will use this
-//                    account to communicate with LDAP/AD. Hence this account
-//                    must have appropriate privileges, specifically for lookup.
-//  ServiceAccountPassword: of the service account
-//  StartTLS: if set, the connection will be upgrated to SSL/TLS mode
-//  InsecureSkipVerify: if set, the certificate verification is skipped;
-//                      used only when `StartTLS` is enabled.
-//  TLSCertIssuedTo: Servername for which the TLS/SSL certificate was issued.
-//                   This is used only when `StartTLS` is enabled.
-//                   The connection is prone to man-in-the-middle attacks,
-//                   if empty(TLSCertIssuedTo) and InsecureSkipVerify == false.
 type LdapConfiguration struct {
 	Server                 string `json:"server"`
 	Port                   uint16 `json:"port"`
@@ -105,39 +86,23 @@ type LdapConfiguration struct {
 	TLSCertIssuedTo        string `json:"tls_cert_issued_to"`
 }
 
-//
-// KVStoreConfig encapsulates config data that determines KV store
-// details specific to a running instance of auth_proxy
-//
-// Fields:
 //   StoreURL: URL of the key-value store
 //
 type KVStoreConfig struct {
 	StoreURL    []string `json:"kvstore-url"`
 	StoreDriver string `json:"kvstore-driver"`
+	DbTLSCert    string      `json:"db-tls-cert"`
+	DbTLSKey     string      `json:"db-tls-key"`
+	DbTLSCa  	 string      `json:"db-tls-cacert"`
+
 }
 
-//
-// WatchState encapsulates changes in the state stored in the KV store
-// and constitutes both the current and previous state
-//
-// Fields:
-//   Curr: current state for a key in the KV store
-//   Prec: previous state for a key in the KV store
 //
 type WatchState struct {
 	Curr State
 	Prev State
 }
 
-//
-// CommonState defines the fields common to all types.State
-// implementations. This struct will be embedded as an anonymous
-// field in all structs that implement types.State
-//
-// Fields:
-//   StateDriver: etcd or consul statedriver
-//   ID:          identifier for the state
 //
 type CommonState struct {
 	StateDriver StateDriver `json:"-"`
